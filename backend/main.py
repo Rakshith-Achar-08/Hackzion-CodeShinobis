@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
-from utils import count_tokens, estimate_cost, compute_importance, trim_prompt
+from .utils import count_tokens, estimate_cost, compute_importance, trim_prompt
 
 app = FastAPI(title="TokenScope API", version="1.0.0")
 
