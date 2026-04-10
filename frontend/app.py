@@ -1,4 +1,5 @@
 import html
+import os
 import re
 import time
 from typing import Any, Dict, List
@@ -6,8 +7,10 @@ from typing import Any, Dict, List
 import requests
 import streamlit as st
 
-
-API_URL = "http://localhost:8000/analyze"
+# Friend's service: tokenScope-backend (run from repo `tokenScope-backend` → uvicorn main:app)
+_API_BASE = os.environ.get("TOKENSCOPE_API_BASE", "http://127.0.0.1:8000").rstrip("/")
+API_URL = f"{_API_BASE}/analyze"
+TOKENSCOPE_MODEL = os.environ.get("TOKENSCOPE_MODEL", "gemini-1.5-flash")
 
 
 def init_state() -> None:
@@ -174,6 +177,64 @@ def normalize_analysis(payload: Dict[str, Any], prompt: str, response_text: str)
     }
 
 
+def map_tokenscope_backend_response(
+    data: Dict[str, Any], prompt: str, response_text: str
+) -> Dict[str, Any]:
+    """Map tokenScope-backend /analyze JSON to the shape expected by the Streamlit UI."""
+    cost_card = data.get("cost_card") or {}
+    heatmap = data.get("heatmap_data") or []
+
+    importance_items = normalize_importance(heatmap, prompt)
+
+    diff_preview = data.get("diff_preview") or []
+    waste_tokens: List[str] = []
+    seen_w: set[str] = set()
+    for row in diff_preview:
+        if not isinstance(row, dict):
+            continue
+        if row.get("status") != "removed":
+            continue
+        w = str(row.get("word", "")).strip()
+        if w and w not in seen_w:
+            seen_w.add(w)
+            waste_tokens.append(w)
+
+    trimmed_prompt = str(data.get("trimmed_prompt") or prompt).strip() or prompt
+
+    prompt_tokens = safe_int(cost_card.get("original_tokens", 0))
+    original_cost = safe_float(cost_card.get("original_cost_usd", 0.0))
+    resp_words = len(response_text.split()) if (response_text or "").strip() else 0
+    response_tokens = max(0, int(resp_words * 1.2))
+    cost_per_token = original_cost / max(prompt_tokens, 1)
+    response_cost = cost_per_token * response_tokens
+    total_tokens = prompt_tokens + response_tokens
+    total_cost = original_cost + response_cost
+
+    cost_saved_pct = safe_float(cost_card.get("savings_percent", 0.0))
+    if cost_saved_pct >= 35.0:
+        quality_risk = "high"
+    elif cost_saved_pct >= 15.0:
+        quality_risk = "medium"
+    else:
+        quality_risk = "low"
+
+    return {
+        "token_usage": {
+            "prompt_tokens": prompt_tokens,
+            "response_tokens": response_tokens,
+            "total_tokens": total_tokens,
+            "cost_usd": round(total_cost, 10),
+        },
+        "importance_heatmap": importance_items,
+        "waste_tokens": waste_tokens,
+        "optimized_prompt": trimmed_prompt,
+        "cost_saved_pct": cost_saved_pct,
+        "quality_risk": quality_risk,
+        "source_prompt": prompt,
+        "source_response": response_text,
+    }
+
+
 def build_mock_analysis(prompt: str, response_text: str) -> Dict[str, Any]:
     prompt_words = re.findall(r"\S+", prompt)
     response_words = re.findall(r"\S+", response_text)
@@ -218,13 +279,31 @@ def build_mock_analysis(prompt: str, response_text: str) -> Dict[str, Any]:
 
 
 def fetch_analysis(prompt: str, response_text: str) -> Dict[str, Any]:
-    payload = {"prompt": prompt, "response": response_text}
+    text = (prompt or "").strip()
+    if not text:
+        st.session_state.used_mock_data = True
+        st.session_state.backend_error = "Add a non-empty prompt (tokenScope-backend analyzes prompt text)."
+        return build_mock_analysis(prompt or "", response_text or "")
+
+    payload = {
+    "prompt": text,
+    "api_key": "dummy_key",
+    "model": "gpt-3.5-turbo"
+    }
+
+    print("DEBUG PAYLOAD:", {"text": text, "model": TOKENSCOPE_MODEL})
     try:
-        resp = requests.post(API_URL, json=payload, timeout=12)
-        resp.raise_for_status()
+        resp = requests.post(API_URL, json=payload, timeout=60)
+        print("STATUS:", resp.status_code)
+        print("RESPONSE:", resp.text)
+
+        if resp.status_code != 200:
+            raise Exception(f"Backend Error: {resp.status_code} - {resp.text}")
         data = resp.json()
         st.session_state.used_mock_data = False
         st.session_state.backend_error = ""
+        if isinstance(data, dict) and "heatmap_data" in data and "cost_card" in data:
+            return map_tokenscope_backend_response(data, prompt, response_text)
         return normalize_analysis(data, prompt, response_text)
     except Exception as exc:
         st.session_state.used_mock_data = True
