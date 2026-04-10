@@ -1,148 +1,131 @@
-# TokenScope
+# TokenScope Pro
 
-> Analyze, visualize, and optimize your LLM prompt tokens. See exactly what each word costs.
+**See your prompts like an engineer: token math, word-level heatmaps, trim savings, and risk signals—in one polished Streamlit dashboard.**
 
-A full-stack web application that helps you understand token usage, visualize word importance via TF-IDF scoring, and get optimized (trimmed) prompts that reduce cost without losing meaning.
-
----
-
-## Screenshots
-
-- **Dark mode** with token importance highlighting
-- **Side-by-side** original vs. trimmed prompt comparison
-- **Animated** stats cards with live token/cost counters
+This repo is the **Hackzion / CodeShinobis** frontend: a production-style UI wired to a real analysis API. Paste a prompt (and optional assistant reply), hit **Analyze**, and watch token usage, importance scores, waste tokens, an optimized prompt, cost savings, and quality cues come alive.
 
 ---
 
-## Tech Stack
+## What we shipped (the journey)
 
-| Layer    | Technologies                                          |
-|----------|-------------------------------------------------------|
-| Frontend | React 18, Vite, TypeScript, Tailwind CSS v4, Framer Motion, Lucide Icons, Axios |
-| Backend  | Python 3.11+, FastAPI, Uvicorn, tiktoken, scikit-learn, OpenAI SDK |
+### Core experience
+
+- **Live token feel** — Rough live counts and estimated cost update as you type, before you even analyze.
+- **One-click examples** — Three curated prompts to demo savings and heatmaps instantly.
+- **Full analysis panel** — Token usage metrics, importance heatmap, waste-token list, disabled “optimized prompt” preview, animated **Cost saved %**, and a **quality risk** badge.
+- **Prompt comparison** — Original vs optimized side by side with the same heatmap language you already trust.
+- **Risk gauge** — Progress + labeled risk level for a quick gut check.
+- **Export** — Download a plain-text report when you have a successful run.
+
+### Phase-style UX upgrades
+
+- **History (last 5)** — Sidebar remembers recent runs with snippet, savings %, and risk; one click reloads the full result and inputs.
+- **Dark / light theme** — Toggle in the header; session-safe `st.session_state["theme"]`.
+- **Ctrl+Enter** — From prompt or response fields, triggers Analyze without hunting for the button.
+- **Loading skeleton** — Pulse placeholders inside the spinner so the wait feels intentional.
+- **Responsive layout** — Horizontal blocks wrap on narrow viewports so nothing feels “broken” on mobile.
+
+### Visual layer
+
+- **Premium dark gradient + glass-style cards** — Custom CSS on top of Streamlit: cyan accents, blurred panels, gradient buttons, styled metrics and progress bars—without touching your Python analysis logic.
+
+### Backend integration (the big win)
+
+The UI is built to talk to **[tokenScope-backend](https://github.com/Rakshith-Achar-08/tokenScope-backend)** (FastAPI):
+
+| Your UI sends | Their API expects |
+|---------------|-------------------|
+| `text` (your prompt) | `text` |
+| `model` (e.g. `gemini-1.5-flash`) | `model` |
+
+The app maps their JSON (`heatmap_data`, `cost_card`, `trimmed_prompt`, `diff_preview`, …) into the shape the dashboard already understands—so you get **real heatmaps, real savings, real trim** instead of mock data when the server is up.
+
+**Environment knobs (optional):**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `TOKENSCOPE_API_BASE` | `http://127.0.0.1:8000` | API root (no trailing slash needed) |
+| `TOKENSCOPE_MODEL` | `gemini-1.5-flash` | Model key their cost table supports |
+
+If the API is down or the prompt is empty, the app **falls back to mock data** and surfaces the error so you are never stuck on a blank screen.
+
+### Also in this repo
+
+- **`backend/`** — An alternate FastAPI stack (OpenAI + tiktoken-style flow) for experiments; the **Streamlit app is configured for tokenScope-backend by default**, not this module path.
 
 ---
 
-## Project Structure
+## Tech stack (as built)
+
+| Layer | Stack |
+|--------|--------|
+| **Frontend** | Python 3.11+, Streamlit, `requests` |
+| **Primary API** | FastAPI, Uvicorn, YAKE, token + cost helpers *(tokenScope-backend, separate clone)* |
+
+---
+
+## Project structure
 
 ```
-/token-scope
-├── backend/
-│   ├── main.py             # FastAPI app with /analyze endpoint
-│   ├── utils.py             # Token counting, TF-IDF, trimming logic
-│   └── requirements.txt     # Python dependencies
+Hackzion-CodeShinobis/
 ├── frontend/
-│   ├── src/
-│   │   ├── App.tsx           # Main application component
-│   │   ├── main.tsx          # React entry point
-│   │   ├── index.css         # Global styles + Tailwind
-│   │   ├── components/       # Header, StatsCard, HighlightedPrompt, etc.
-│   │   └── lib/api.ts        # API client
-│   ├── vite.config.ts        # Vite config with proxy
-│   └── index.html            # HTML shell
+│   └── app.py              # TokenScope Pro — UI, session state, API client, CSS
+├── backend/                # Optional / legacy FastAPI (OpenAI-oriented)
+│   ├── main.py
+│   ├── utils.py
+│   └── requirements.txt
 └── README.md
 ```
 
 ---
 
-## Getting Started
+## Run it end-to-end
 
-### Prerequisites
+### 1. Start tokenScope-backend
 
-- **Python 3.11+** installed
-- **Node.js 18+** and npm installed
-- **OpenAI API Key** (get one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys))
-
-### 1. Backend Setup
+Clone and run from **that** project’s root (sibling or separate folder—your choice):
 
 ```bash
-cd backend
-
-# Create virtual environment (recommended)
-python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # macOS/Linux
-
-# Install dependencies
+cd path/to/tokenScope-backend
 pip install -r requirements.txt
-
-# Run the server
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The API will be available at `http://localhost:8000`.
+Health check: `GET http://127.0.0.1:8000/health`
 
-### 2. Frontend Setup
+### 2. Start TokenScope Pro (this repo)
 
 ```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Run dev server
-npm run dev
+cd Hackzion-CodeShinobis
+pip install streamlit requests
+streamlit run frontend/app.py
 ```
 
-The app will be available at `http://localhost:5173`.
+Streamlit opens in the browser; ensure **`TOKENSCOPE_API_BASE`** matches where uvicorn listens if you are not on port 8000.
 
-### 3. CORS
+### 3. Use it
 
-CORS is configured to allow all origins (`*`) in development. The Vite dev server also proxies `/analyze` and `/health` to `http://localhost:8000`, so API calls work seamlessly.
-
----
-
-## How It Works
-
-1. **Enter your prompt** in the textarea
-2. **Select a model** (GPT-3.5 Turbo or GPT-4o Mini)
-3. **Enter your OpenAI API key** (saved locally in your browser)
-4. **Click "Analyze Prompt"** (or press `Ctrl/⌘ + Enter`)
-5. **View results:**
-   - Token counts + estimated USD cost
-   - Token importance heatmap (TF-IDF based)
-   - Full LLM response
-   - Suggested trimmed prompt with savings breakdown
-
-### Token Importance (TF-IDF)
-
-- Uses `TfidfVectorizer` from scikit-learn on a two-document corpus: `[prompt, response]`
-- Each word in the prompt gets a normalized importance score (0–1)
-- Words are color-coded: orange (high), amber (medium), gray (low)
-
-### Prompt Trimming
-
-- Removes words with importance score below 0.35
-- Preserves structural/grammatical words for readability
-- Shows exact token reduction and dollar savings
+1. Paste a **prompt** (required for the real API).
+2. Optionally paste an **AI response** (used in the UI and for rough “response side” estimates; the friend’s backend scores the **prompt**).
+3. Press **Analyze** or **Ctrl+Enter** in a text field.
+4. Explore heatmap, savings, history, theme, and export.
 
 ---
 
-## OpenAI Pricing (used for cost estimation)
+## Troubleshooting
 
-| Model          | Input (per 1K tokens) | Output (per 1K tokens) |
-|----------------|----------------------|------------------------|
-| gpt-3.5-turbo  | $0.0005              | $0.0015                |
-| gpt-4o-mini    | $0.00015             | $0.0006                |
-
----
-
-## Features
-
-- ✅ Accurate token counting via `tiktoken`
-- ✅ TF-IDF word importance visualization
-- ✅ Smart prompt trimming with savings
-- ✅ Dark/Light mode with smooth transitions
-- ✅ Framer Motion animations throughout
-- ✅ Keyboard shortcut (Ctrl/⌘ + Enter)
-- ✅ Copy buttons with toast notifications
-- ✅ Session history (last 3 analyses)
-- ✅ Mobile-responsive layout
-- ✅ Loading skeletons
-- ✅ Error handling with friendly messages
+| Symptom | Likely fix |
+|---------|------------|
+| “Backend unavailable” / mock data | Start tokenScope-backend; check port and `TOKENSCOPE_API_BASE`. |
+| `422` from FastAPI | Body must be `{"text": "...", "model": "..."}` — the shipped `app.py` already does this. |
+| `ModuleNotFoundError: backend` | If using **this** repo’s `backend/` package, run uvicorn from the folder that **contains** the `backend` package (see that backend’s docs). |
 
 ---
 
 ## License
 
 MIT
+
+---
+
+*Built as a capstone-style full-stack slice: serious token economics, a friend’s analysis engine, and a frontend that feels like a product—not a homework script.*
